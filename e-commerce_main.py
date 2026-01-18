@@ -16,11 +16,11 @@ import os
 from telegram import InputFile, Update, InlineKeyboardButton, InlineKeyboardMarkup
 
 
-RICE_FOLDER = r"/Users/joshua.echendu/Documents/async_Telegram_restaurant/rice_folder"
-SPICED_CHICKEN_FOLDER = r"/Users/joshua.echendu/Documents/async_Telegram_restaurant/spiced_fried_chicken"
-ROTISSERIE_CHICKEN_FOLDER = r"/Users/joshua.echendu/Documents/async_Telegram_restaurant/Rotisserie_chicken"
-BURGER_AND_SNACK_FOLDER = r"/Users/joshua.echendu/Documents/async_Telegram_restaurant/Burger_folder"
-BEVERAGES_FOLDER = r"/Users/joshua.echendu/Documents/async_Telegram_restaurant/Beverages"
+RICE_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\rice_folder"
+SPICED_CHICKEN_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\spiced_fried_chicken"
+ROTISSERIE_CHICKEN_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\Rotisserie_chickenn"
+BURGER_AND_SNACK_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\Burger_folder"
+BEVERAGES_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\Beverages"
 
 MEAL_FOLDERS = {
     "rice": RICE_FOLDER,
