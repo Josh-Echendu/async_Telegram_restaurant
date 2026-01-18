@@ -15,6 +15,7 @@ from telegram.ext import ContextTypes
 from telegram.ext import ApplicationHandlerStop
 import os
 from telegram import InputFile, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import MenuButtonWebApp, WebAppInfo
 
 
 RICE_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\rice_folder"
@@ -50,49 +51,42 @@ logging.basicConfig(
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await logger(update, context)
 
-    ADMIN_WEB_APP_URL = "https://your-admin-dashboard.com"  # replace with real URL
+    ADMIN_WEB_APP_URL = "https://whoscored.com"
 
+    # ID of the user you want to make admin
+    ADMIN_USER_ID = 5680916028
+
+    # chat_id = update.effective_chat.id → get the current chat ID.
     chat_id = update.effective_chat.id
+
+    # user_id = update.effective_user.id → get the ID of the person sending the command.
     user_id = update.effective_user.id
+
     first_name = update.effective_chat.first_name
 
-    member = await context.bot.get_chat_member(
-        chat_id=chat_id,
-        user_id=user_id
-    )
-    print("DEBUG member.status:", member.status)
-    ADMIN_USER_ID = 5680916028
-    
-    if update.effective_chat.type == "private":
-        user_is_admin = user_id == ADMIN_USER_ID
-    else:
-        user_is_admin = member.status in ("administrator", "creator")
+    # Detect admin: “If user_id equals ADMIN_USER_ID, then user_is_admin becomes True, otherwise False.”
+    user_is_admin = user_id == ADMIN_USER_ID
 
+    # ✅ Set WebApp button in input bar (ONLY for admin)
     if user_is_admin:
-        keyboard = [
-            ["🍽 Order Food", "📦 Track Order"],
-            [KeyboardButton("🔐 Admin Login", web_app=WebAppInfo(url=ADMIN_WEB_APP_URL))],
-            ["📞 Contact Staff", "ℹ️ Help"]
-        ]
-        text = "👑 Welcome Admin! Choose an option:"
+        await context.bot.set_chat_menu_button(
+            chat_id=chat_id,
+            menu_button=MenuButtonWebApp(
+                text="🔐 Admin",
+                web_app=WebAppInfo(url=ADMIN_WEB_APP_URL)
+            )
+        )
 
-    else:
-        keyboard = [
-            ["🍽 Order Food", "📦 Track Order"],
-            ["📞 Contact Staff", "ℹ️ Help"]
-        ]
-        text = f"Hello, {first_name}! 😊 Welcome to our service. How can we assist you today? 😊"
+    # Normal welcome UI
+    keyboard = [
+        ["🍽 Order Food", "📦 Track Order"],
+        ["📞 Contact Staff", "ℹ️ Help"]
+    ]
 
-    reply_markup = ReplyKeyboardMarkup(
-        keyboard,
-        resize_keyboard=True,
-        one_time_keyboard=False
-    )
     await update.message.reply_text(
-        text,
-        reply_markup=reply_markup
+        f"Hello {first_name}! 😊 What would you like to do?",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
-
 
 async def after_payment(chat_id, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -637,7 +631,9 @@ async def delete_image(update: Update, context: ContextTypes.DEFAULT_TYPE, messa
         logging.error(f"Error deleting message {message_id}: {e}")
         pass  # message may already be deleted
 
-async def send_to_kitchen(update: Update, context: ContextTypes.DEFAULT_TYPE, query):
+KITCHEN_CHAT_ID = -1003393413273
+
+async def send_to_kitchen(update: Update, context: ContextTypes.DEFAULT_TYPE, query):    
     # get the current cart
     active_cart = context.user_data.get('active_cart', {})
     print("active_cart...: ", active_cart)
@@ -652,6 +648,33 @@ async def send_to_kitchen(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
 
     # print context.user_data
     print("order_batches: ", context.user_data.get('order_batches'))
+
+    # ---- Build kitchen message ----
+    user = update.effective_user
+    price = 1500
+    lines = []
+
+    # Calculate total price
+    total_price = sum(price * qty for item, qty in copy_active_cart.items())
+
+    for item, qty in copy_active_cart.items():
+        subtotal = price * qty
+        lines.append(f"×{qty} - {item} - ₦{subtotal}")
+
+    kitchen_text = (
+        "🔥 NEW ORDER RECEIVED\n\n"
+        f"👤 Customer: {user.first_name}\n"
+        f"🆔 User ID: {user.id}\n\n"
+        "📦 Items:\n" + "\n".join(lines) + "\n\n"
+        "⏳ Status: Pending"
+        + f"\n\n——————————\n*Total: ₦{total_price}*"
+    )
+
+    # ---- Send to kitchen ----
+    await context.bot.send_message(
+        chat_id=KITCHEN_CHAT_ID,
+        text=kitchen_text
+    )
 
     # Clear cart and unlock cart
     context.user_data['active_cart'] = {}
@@ -715,7 +738,7 @@ async def checkout_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [
-            InlineKeyboardButton("✅ Send Order to Kitchen", callback_data=f"order_to_kitchen"),
+            InlineKeyboardButton("✅ Send to Kitchen", callback_data=f"order_to_kitchen"),
             InlineKeyboardButton(f"[ ❌ Cancel ]", callback_data="cancel_order"),
         ]
     ]
@@ -765,7 +788,9 @@ async def global_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     raise ApplicationHandlerStop
 
-
+async def debug_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print("CHAT ID:", update.effective_chat.id)
+    print("CHAT TYPE:", update.effective_chat.type)
 
 
 if __name__ == '__main__':
@@ -782,6 +807,8 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start), group=1)
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), echo), group=1)
     app.add_handler(CallbackQueryHandler(button_click), group=1)
+    app.add_handler(MessageHandler(filters.ALL, debug_chat), group=99)
+
 
     app.run_polling()
 
