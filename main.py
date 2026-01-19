@@ -20,16 +20,20 @@ from telegram import MenuButtonWebApp, WebAppInfo
 
 RICE_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\rice_folder"
 SPICED_CHICKEN_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\spiced_fried_chicken"
-ROTISSERIE_CHICKEN_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\Rotisserie_chicken"
+FLAMED_GRILLED_CHICKEN = r"C:\Users\Admin\Music\async_Telegram_restaurant\Flamed_grilled_chicken"
 BURGER_AND_SNACK_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\Burger_folder"
 BEVERAGES_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\Beverages"
+ROTISSERIE_CHICKEN_FOLDER = r"C:\Users\Admin\Music\async_Telegram_restaurant\Rotisserie_chicken_folder"
+TASTY_SIDES = r"C:\Users\Admin\Music\async_Telegram_restaurant\Tasty_sides"
 
 MEAL_FOLDERS = {
     "rice": RICE_FOLDER,
     "spiced_chicken": SPICED_CHICKEN_FOLDER,
-    "rotisserie_chicken": ROTISSERIE_CHICKEN_FOLDER,
+    "flamed_grilled_chicken": FLAMED_GRILLED_CHICKEN,
     "burgers_wraps_chickwizz": BURGER_AND_SNACK_FOLDER,
-    "beverages": BEVERAGES_FOLDER
+    "beverages": BEVERAGES_FOLDER,
+    "rotisserie_chicken": ROTISSERIE_CHICKEN_FOLDER,
+    "tasty_sides": TASTY_SIDES
 }
 
 
@@ -109,8 +113,9 @@ async def order_meal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply_keyboard = [
         ["🍚 🍚 🍚Rice", "🍗🍗Spiced Fried Chicken"],
-        ['🥗🍔🍗🍟🥓 Snacks', '🍗Rotisserie Chicken'],
-        ["⬅️ Back", "🥤🍾🍷 Drinks / Beverages"],        
+        ['🥗🍔🍗🍟🥓 Snacks', '🍗Flamed Grilled Chicken'],
+        ['🍗🍗 Rotisserie Chicken', '🍗🍝 🍜Tasty Sides'],
+        ["⬅️ Back", "➡️ More"]
     ]
 
     markup = ReplyKeyboardMarkup(
@@ -123,7 +128,7 @@ async def order_meal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def order_meal_by_chat_id(chat_id, context: ContextTypes.DEFAULT_TYPE):
     reply_keyboard = [
         ["🍚 🍚 🍚Rice", "🍗🍗Spiced Fried Chicken"],
-        ['🥤🥗🍔🍗🍟🥓 Snacks', '🍗Rotisserie Chicken'],
+        ['🥤🥗🍔🍗🍟🥓 Snacks', '🍗Flamed Grilled Chicken'],
         ["⬅️ Back", "🥤 Drinks / Beverages"],
     ]
 
@@ -155,8 +160,10 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except:
             pass
+        context.user_data.pop("checkout_message_id", None)
 
-    if send_to_kitchen_id and data not in ("order_more_items", "pay_now"):
+
+    if send_to_kitchen_id and data not in ("add_more_items", "pay_now"):
         try:
             await context.bot.edit_message_text(
                 text='🍽️ Order sent to the kitchen! 🎉',
@@ -166,6 +173,9 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except:
             pass
+        finally:
+            context.user_data.pop("send_to_kitchen_id", None)
+
 
     # get 'cart' in user_data if not existing setdefault to empty dict
     active_cart = context.user_data.setdefault('active_cart', {})
@@ -239,48 +249,13 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("Remove button clicked: ", context.user_data)
 
     elif data == 'pay_now':
-        context.user_data['cart_locked'] = True
-        context.user_data['payment_locked'] = True
-
-        price = 1500
-
-        # Charge user based on backend cart
-        order_batches = context.user_data.get('order_batches', [])
-
-        lines = []
-        total_price = 0
-
-        # delete the Transfer and cancel buttons
-        await query.edit_message_text("🍽️ Order sent to the kitchen! 🎉")
-
-        for order in order_batches:
-            for item, qty in order.items():
-                subtotal = price * qty
-                total_price = total_price + subtotal
-                lines.append(f"{qty}X - {item} - ₦{subtotal}")
-
-        account_info = "Bank: XYZ Bank\nAccount Number: 1234567890\nAccount Name: ABC Restaurant"
-        summary = (
-            "🧾 *Your Order Summary*\n\n"
-            + "\n".join(lines)
-            + f"\n\n——————————\n*Total: ₦{total_price}*"
-            + f"\n\nPlease make your payment to the following account:\n\n{account_info}\n\nThank you for your order!"
-        )
-
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ I have paid", callback_data="confirm_payment"),
-            ]
-        ]
-
-        await query.message.reply_text(
-            text=summary,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-
+        if context.user_data.get('send_to_kitchen_id'):
+            context.user_data.pop('send_to_kitchen_id', None)
+        await pay_now(update, context, query)
 
     elif data == 'cancel_order':
         await query.answer("❌ Order cancelled")
+        context.user_data.pop("checkout_message_id", None)
 
         # Unlock cart
         context.user_data['cart_locked'] = False
@@ -318,7 +293,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['order_batches'] = []
         context.user_data['last_caption'] = {}
         context.user_data['cart_locked'] = False
-        context.user_data['payment_locked'] = False
 
         print("user_data_after_payment: ", context.user_data)
 
@@ -328,11 +302,53 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_reply_markup(reply_markup=None)
         await send_to_kitchen(update, context, query)
 
-    elif data == "order_more_items":
+    elif data == "add_more_items":
+        if context.user_data.get('send_to_kitchen_id'):
+            context.user_data.pop('send_to_kitchen_id', None)
         await query.edit_message_text("🍽️ Order sent to the kitchen! 🎉")
 
         # Extract message chat.id bcos update.message for a callback_query is None
         await order_meal_by_chat_id(query.message.chat.id, context)
+
+async def pay_now(update, context, query=None):
+    context.user_data['cart_locked'] = True
+    price = 1500
+
+    # Charge user based on backend cart
+    order_batches = context.user_data.get('order_batches', [])
+
+    lines = []
+    total_price = 0
+
+    if query:
+        # delete the Transfer and cancel buttons
+        await query.edit_message_text("🍽️ Order sent to the kitchen! 🎉")
+
+    for order in order_batches:
+        for item, qty in order.items():
+            subtotal = price * qty
+            total_price = total_price + subtotal
+            lines.append(f"{qty}X - {item} - ₦{subtotal}")
+
+    account_info = "Bank: XYZ Bank\nAccount Number: 1234567890\nAccount Name: ABC Restaurant"
+    summary = (
+        "🧾 *Your Order Summary*\n\n"
+        + "\n".join(lines)
+        + f"\n\n——————————\n*Total: ₦{total_price}*"
+        + f"\n\nPlease make your payment to the following account:\n\n{account_info}\n\nThank you for your order!"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ I have paid", callback_data="confirm_payment"),
+        ]
+    ]
+
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=summary,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def update_qty_button(context, query, product_name, qty, price_per_item=1500):
     
@@ -455,7 +471,7 @@ async def meal_images(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 
                 # store sent message id into meal_image_messages list
-                context.user_data.get(f'{meal_type}_image_messages', []).append(send_msg.message_id)
+                context.user_data.setdefault(f'{meal_type}_image_messages', []).append(send_msg.message_id)
             except Exception as e:
                 logging.warning(f"Failed to send image {path}: {e}")
 
@@ -470,7 +486,7 @@ async def meal_images(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
 
                 # store sent message id into meal_image_messages list
-                context.user_data.get(f'{meal_type}_image_messages', []).append(send_msg.message_id)
+                context.user_data.setdefault(f'{meal_type}_image_messages', []).append(send_msg.message_id)
             except Exception as e:
                 logging.warning(f"Failed to send image {path}: {e}")
 
@@ -506,6 +522,8 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except:
             pass
+        finally:
+            context.user_data.pop("checkout_message_id", None)
 
     if send_to_kitchen_id:
         try:
@@ -517,6 +535,9 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except:
             pass
+        finally:
+            context.user_data.pop("send_to_kitchen_id", None)
+
 
     if text == "🍽 Order Food":
         await order_meal(update, context)
@@ -533,12 +554,19 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif text == "⬅️ Back":
         meal_type = context.user_data.get('meal_type')
-
+        more_menu = context.user_data.get("more_menu")
+        
         # if there is a meal_type in user_data, go back to meal ordering menu
         if meal_type:
             await Extract_message_img_ids(update, context)
             await order_meal(update, context)
             return
+        
+        if more_menu:
+            context.user_data.pop('more_menu', None)
+            await order_meal(update, context)
+            return
+
         await start(update, context)
 
     elif text == "🍚 🍚 🍚Rice":
@@ -547,17 +575,43 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "🍗🍗Spiced Fried Chicken":
         await echo_orders(update, context, category='spiced_chicken')  
 
-    elif text == "🍗Rotisserie Chicken":
-        await echo_orders(update, context, category='rotisserie_chicken')  
+    elif text == "🍗Flamed Grilled Chicken":
+        await echo_orders(update, context, category='flamed_grilled_chicken')  
 
     elif text == "🥗🍔🍗🍟🥓 Snacks":
         await echo_orders(update, context, category='burgers_wraps_chickwizz')  
 
     elif text == "🥤🍾🍷 Drinks / Beverages":
         await echo_orders(update, context, category='beverages')  
+    
+    elif text == "🍗🍗 Rotisserie Chicken":
+        await echo_orders(update, context, category='rotisserie_chicken')  
+        
+    elif text == "🍗🍝 🍜Tasty Sides":
+        await echo_orders(update, context, category='tasty_sides')  
+        
+    elif text == "➡️ More":
+        context.user_data.setdefault("more_menu", True)
+        await cart_checkout(update, context)
         
     elif text == "🛍️✅💳 Checkout/Pay":
-        await checkout_pay(update, context)
+        # 1️⃣ Try paying for current cart if not empty
+        if context.user_data.get('active_cart'):
+            await checkout_pay(update, context)
+            return
+        
+        # 2️⃣ If cart empty, but last_order exists (sent to kitchen), allow paying it
+        last_order = context.user_data.get('order_batches', [])
+        if last_order:
+            await pay_now(update, context)
+            return
+        
+        # 3️⃣ Otherwise, truly empty cart and no order_batches
+        await Extract_message_img_ids(update, context)
+        await update.message.reply_text(
+            "🛒 Your cart is empty.\nPlease add items before paying."
+        )
+        
 
     elif text == "🛒💚 View Cart":
         meal_type = context.user_data.get('meal_type')
@@ -586,7 +640,7 @@ async def echo_orders(update: Update, context: ContextTypes.DEFAULT_TYPE, catego
     if context.user_data.get('meal_type'):
         context.user_data.pop('meal_type', None)
 
-    meal_type = context.user_data.setdefault('meal_type', category)
+    meal_type = context.user_data.get('meal_type', None)
 
     # create an empty list to store sent message ids
     context.user_data.setdefault(f"{meal_type}_image_messages", [])
@@ -603,23 +657,19 @@ async def echo_orders(update: Update, context: ContextTypes.DEFAULT_TYPE, catego
     print("user_data....: ", context.user_data)
 
 async def Extract_message_img_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    
-    meal_type = context.user_data.get('meal_type', None)
+    meal_type = context.user_data.get('meal_type')
+    if not meal_type:
+        return
 
-    # Extract the previous page message ids
-    meal_image_messages_ids = context.user_data.get(f"{meal_type}_image_messages", [])
-    print("meal_images_id: ", meal_image_messages_ids)
+    old_ids = context.user_data.get(f"{meal_type}_image_messages", []).copy()
+    context.user_data[f"{meal_type}_image_messages"] = []
 
-    # Extract old image ids
-    old_ids = meal_image_messages_ids.copy()
+    if old_ids:
+        await asyncio.gather(
+            *[delete_image(update, context, msg_id) for msg_id in old_ids],
+            return_exceptions=True
+        )
 
-    # Clear the meal_image_messages list before deletion
-    context.user_data[f'{meal_type}_image_messages'] = []
-
-    if old_ids:  
-        # Delete all previous meal messages ids concurrently
-        task = [delete_image(update, context, msg_id) for msg_id in old_ids]
-        await asyncio.gather(*task, return_exceptions=True)
 
 async def delete_image(update: Update, context: ContextTypes.DEFAULT_TYPE, message_id):
     try:
@@ -632,71 +682,46 @@ async def delete_image(update: Update, context: ContextTypes.DEFAULT_TYPE, messa
         pass  # message may already be deleted
 
 KITCHEN_CHAT_ID = -1003393413273
-
-async def send_to_kitchen(update: Update, context: ContextTypes.DEFAULT_TYPE, query):    
-    # get the current cart
+async def send_to_kitchen(update: Update, context: ContextTypes.DEFAULT_TYPE, query):
     active_cart = context.user_data.get('active_cart', {})
-    print("active_cart...: ", active_cart)
+    if not active_cart:
+        await query.answer("Cart is empty", show_alert=True)
+        return
 
-    # copy the active cart
-    copy_active_cart = active_cart.copy() 
-    print("copy_active_cart...: ", copy_active_cart)
+    copy_cart = active_cart.copy()
+    context.user_data.setdefault('order_batches', []).append(copy_cart)
 
-    # append to order_batches
-    order_batches = context.user_data.setdefault('order_batches', [])
-    order_batches.append(copy_active_cart)
-
-    # print context.user_data
-    print("order_batches: ", context.user_data.get('order_batches'))
-
-    # ---- Build kitchen message ----
     user = update.effective_user
     price = 1500
-    lines = []
-
-    # Calculate total price
-    total_price = sum(price * qty for item, qty in copy_active_cart.items())
-
-    for item, qty in copy_active_cart.items():
-        subtotal = price * qty
-        lines.append(f"×{qty} - {item} - ₦{subtotal}")
+    lines = [f"×{qty} - {item} - ₦{price*qty}" for item, qty in copy_cart.items()]
+    total = sum(price * qty for qty in copy_cart.values())
 
     kitchen_text = (
         "🔥 NEW ORDER RECEIVED\n\n"
         f"👤 Customer: {user.first_name}\n"
         f"🆔 User ID: {user.id}\n\n"
-        "📦 Items:\n" + "\n".join(lines) + "\n\n"
+        "📦 Items:\n" + "\n".join(lines)+
+        f"\n\n——————————\n*Total: ₦{total}*\n\n"
         "⏳ Status: Pending"
-        + f"\n\n——————————\n*Total: ₦{total_price}*"
     )
 
-    # ---- Send to kitchen ----
-    await context.bot.send_message(
-        chat_id=KITCHEN_CHAT_ID,
-        text=kitchen_text
-    )
+    await context.bot.send_message(chat_id=KITCHEN_CHAT_ID, text=kitchen_text)
 
-    # Clear cart and unlock cart
     context.user_data['active_cart'] = {}
     context.user_data['last_caption'] = {}
+    context.user_data.pop("checkout_message_id", None)
 
-    # send next options to user
-    keyboard = [
-        [
-            InlineKeyboardButton("➕ Add More Items", callback_data="order_more_items"),
-            InlineKeyboardButton("💳 Pay Now", callback_data="pay_now"),
-        ]
-    ]
-    
-    summary = "🍽️ Order sent to the kitchen! 🎉\n\nWhat would you like to do next?\n➕ Add more items\n💳 Pay now"
+    keyboard = [[
+        InlineKeyboardButton("➕ Add More Items", callback_data="add_more_items"),
+        InlineKeyboardButton("💳 Pay Now", callback_data="pay_now"),
+    ]]
+
     msg = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=summary,
+        text="🍽️ Order sent to the kitchen! 🎉\n\nWhat would you like to do next?",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     context.user_data['send_to_kitchen_id'] = msg.message_id
-
-    print("send_to_kitchen_id: ", context.user_data['send_to_kitchen_id'])
 
 
 async def checkout_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -707,13 +732,13 @@ async def checkout_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # get the current cart
     active_cart = context.user_data.get('active_cart', {})
     print("active_cart...: ", active_cart)
-
-    if not active_cart:  
+    
+    if not active_cart:
 
         await Extract_message_img_ids(update, context)
-     
-        # Go back to meal category
-        await order_meal(update, context)
+        await update.message.reply_text(
+            "🛒 Your cart is empty.\nPlease add items before paying."
+        )
         return
 
     # Delete all previous meal messages ids concurrently
@@ -763,9 +788,16 @@ async def cart_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resize_keyboard=True,
         one_time_keyboard=False
     )
-    await update.message.reply_text("Here are the options for Today 🍟🍟🍟:", reply_markup=reply_markup)
+    
+    await update.message.reply_text("Select an item from the menu below:", reply_markup=reply_markup)
+
+    # await update.message.reply_text("Here are the options for Today 🍟🍟🍟:", reply_markup=reply_markup)
 
 async def global_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 🔒 Only lock PRIVATE chats, never groups
+    if update.effective_chat.type != "private":
+        return
+    
     if not context.user_data.get('cart_locked'):
         return
 
@@ -789,8 +821,11 @@ async def global_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raise ApplicationHandlerStop
 
 async def debug_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # always turn off privacy with /setprivacy so bot can receive all messages sent to group
     print("CHAT ID:", update.effective_chat.id)
     print("CHAT TYPE:", update.effective_chat.type)
+    print("CHAT:", update)
 
 
 if __name__ == '__main__':
@@ -814,7 +849,6 @@ if __name__ == '__main__':
 
 
 # for my telegeram bot , when a user carts to cart, we have a back 2 reply button in which user can go back to and add more food category and pay/checkout, when a user clicks checkout we immediately lock all inline buttons to avoid users from maliciously malipulating prices , so imagine a user order 3 items , any in the checkout and back button 
-
 
 
 # ⚡ Recommended flow for your bot
