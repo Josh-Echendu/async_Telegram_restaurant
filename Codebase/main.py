@@ -128,8 +128,9 @@ async def order_meal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def order_meal_by_chat_id(chat_id, context: ContextTypes.DEFAULT_TYPE):
     reply_keyboard = [
         ["🍚 🍚 🍚Rice", "🍗🍗Spiced Fried Chicken"],
-        ['🥤🥗🍔🍗🍟🥓 Snacks', '🍗Flamed Grilled Chicken'],
-        ["⬅️ Back", "🥤 Drinks / Beverages"],
+        ['🥗🍔🍗🍟🥓 Snacks', '🍗Flamed Grilled Chicken'],
+        ['🍗🍗 Rotisserie Chicken', '🍗🍝 🍜Tasty Sides'],
+        ["⬅️ Back", "➡️ More"]
     ]
 
     markup = ReplyKeyboardMarkup(
@@ -163,7 +164,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("checkout_message_id", None)
 
 
-    if send_to_kitchen_id and data not in ("add_more_items", "pay_now"):
+    if send_to_kitchen_id and data not in ("order_more_items", "pay_now"):
         try:
             await context.bot.edit_message_text(
                 text='🍽️ Order sent to the kitchen! 🎉',
@@ -302,7 +303,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_reply_markup(reply_markup=None)
         await send_to_kitchen(update, context, query)
 
-    elif data == "add_more_items":
+    elif data == "order_more_items":
         if context.user_data.get('send_to_kitchen_id'):
             context.user_data.pop('send_to_kitchen_id', None)
         await query.edit_message_text("🍽️ Order sent to the kitchen! 🎉")
@@ -415,6 +416,7 @@ async def meal_images(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ITEMS_PER_PAGE = 3
 
     meal_type = context.user_data.get('meal_type', None)
+    print("user_data: ", context.user_data)
 
     #  if 'rice_files' not in user_data, load all rice image files
     if f'{meal_type}_files' not in context.user_data:
@@ -611,6 +613,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "🛒 Your cart is empty.\nPlease add items before paying."
         )
+        await order_meal(update, context)
         
 
     elif text == "🛒💚 View Cart":
@@ -640,7 +643,7 @@ async def echo_orders(update: Update, context: ContextTypes.DEFAULT_TYPE, catego
     if context.user_data.get('meal_type'):
         context.user_data.pop('meal_type', None)
 
-    meal_type = context.user_data.get('meal_type', None)
+    meal_type = context.user_data.setdefault('meal_type', category)
 
     # create an empty list to store sent message ids
     context.user_data.setdefault(f"{meal_type}_image_messages", [])
@@ -712,7 +715,7 @@ async def send_to_kitchen(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
     context.user_data.pop("checkout_message_id", None)
 
     keyboard = [[
-        InlineKeyboardButton("➕ Add More Items", callback_data="add_more_items"),
+        InlineKeyboardButton("➕ Add More Items", callback_data="order_more_items"),
         InlineKeyboardButton("💳 Pay Now", callback_data="pay_now"),
     ]]
 
@@ -794,14 +797,23 @@ async def cart_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # await update.message.reply_text("Here are the options for Today 🍟🍟🍟:", reply_markup=reply_markup)
 
 async def global_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔒 Only lock PRIVATE chats, never groups
     if update.effective_chat.type != "private":
         return
-    
-    if not context.user_data.get('cart_locked'):
+
+    # get cart lock status
+    cart_locked = context.user_data.get('cart_locked', False)
+
+    # # allow some exceptions even if cart is locked
+    allowed_callbacks = ["confirm_payment", "cancel_order"]
+
+    if update.callback_query and update.callback_query.data in allowed_callbacks:
+        return  # let these go through
+
+    # if cart is not locked
+    if not cart_locked:
         return
 
-    # Block normal messages + reply buttons
+    # Block normal messages
     if update.message:
         try:
             await update.message.delete()
@@ -811,7 +823,7 @@ async def global_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💳 Payment in progress.\nPlease complete or cancel payment to continue."
         )
 
-    # Block inline buttons
+    # Block other inline buttons
     elif update.callback_query:
         await update.callback_query.answer(
             "💳 Payment in progress.\nPlease complete or cancel payment to continue.",
@@ -819,6 +831,7 @@ async def global_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     raise ApplicationHandlerStop
+
 
 async def debug_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
